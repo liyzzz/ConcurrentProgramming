@@ -76,9 +76,9 @@ public class ThreadStatusDemo {
     /**
      * running到终止状态的三种方式：
      * 1.run方法执行完
-     * 2.抛异常结束
-     * 3.（已废弃）在其他线程里直接结束，例如stop，suspend方法
-     * 4.由其他线程告知该线程结束（还是执行完run方法结束）
+     * 2.（已废弃）在其他线程里直接结束，例如stop，suspend方法
+     * 3.由其他线程告知该线程结束（还是执行完run方法结束）
+     * 注意：抛异常线程并不会结束
      */
     public static void terminated() throws InterruptedException {
         Thread thread=new Thread(()->{
@@ -118,7 +118,7 @@ public class ThreadStatusDemo {
      * 使用interrupted()可以使得当前线程interrupted标识复位为false
      * 该示例方法一致不会结束
      */
-    public static void interrupted() throws InterruptedException {
+    public static void interrupted() throws InterruptedException{
         Thread thread=new Thread(()->{
             while(true){
                 System.out.println("线程正在执行");

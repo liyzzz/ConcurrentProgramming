@@ -39,7 +39,19 @@ http://hg.openjdk.java.net/jdk8/jdk8/jdk/file/00cd9dc3c2b5/src/share/native/java
 上面的网址可以找到java源码中的native方法于hotspot的映射关系  
 根据此映射关系在hotspot源码中查找 
 ### run方法和start方法区别
-start方法是一个信号，告诉cpu我准好了，可以执行了，具体要执行的逻辑在run方法里   
-start方法最终回调了run方法  
+start方法是一个信号，告诉cpu我准好了，可以执行了；  
+而run方法是线程具体需要的执行的逻辑   
+start方法最终回调了run方法 
+### InterruptedException
+这个异常的意思是表示**一个阻塞被其他线程中断**了。  
 
+为什么 Object.wait、Thread.sleep 和 Thread.join都会抛出InterruptedException? 
+  
+这几个方法有一个共同点，都是属于阻塞的方法，  
+而阻塞方法的释放会取决于一些外部的事件,但是阻塞方法可能因为等不到外部的触发事件而导致一直阻塞，所以它允许一个线程请求自己来停止它正在做的事情。  
+当一个方法抛出 InterruptedException 时，它是在告诉调用者如果执行该方法的线程被中断， 
+它会尝试停止正在做的事情并且通过抛出 InterruptedException 表示提前返回。    
+由于线程调用了 interrupt()中断方法，那么Object.wait、Thread.sleep 等被**阻塞的线程被唤醒**以后会通过is_interrupted 方法判断中断标识的状态变化，  
+如果发现中断标识为 true，则**先清除中断标识**(设置为false)，然后抛出InterruptedException，**线程继续运行**     
+具体的示例代码见InterruptedExceptionDemo
 
