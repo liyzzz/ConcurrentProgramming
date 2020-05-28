@@ -312,5 +312,6 @@ inline void OrderAccess::fence() {
   }
 }
 ```
+资料参见：https://blog.csdn.net/qq_26222859/article/details/52235930
 
 
