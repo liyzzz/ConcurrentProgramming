@@ -251,9 +251,11 @@ https://www.zhihu.com/question/63859501
 见 VolatileDemo
 
 原理：  
-补充计算机组成原理知识 见
-![image](https://github.com/liyzzz/ConcurrentProgramming/blob/master/image/one-cpu.png)<br>
-![image](https://github.com/liyzzz/ConcurrentProgramming/blob/master/image/more-cpu.png)<br>
+补充计算机组成原理知识 见   
+计算机的组成
+![image](https://github.com/liyzzz/ConcurrentProgramming/blob/master/image/one-cpu.png)<br>    
+多核cpu 
+![image](https://github.com/liyzzz/ConcurrentProgramming/blob/master/image/more-cpu.png)<br>    
 
 cpu读主内存数据是以一个缓存行为单位（大小为64byte),如果一个缓存行发生变回就会通知其他线程回主内存重新读取
 
