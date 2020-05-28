@@ -8,6 +8,8 @@ public class MyThread  extends Thread{
 
     @Override
     public void run() {
+        this.setName("MyThread");
+        System.out.println("MyThread正在运行");
         super.run();
     }
 

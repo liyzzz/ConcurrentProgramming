@@ -1,6 +1,9 @@
 package com.liyueze.base;
 
+import lombok.SneakyThrows;
+
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * 运行状态无示例代码（Thead.start()等待cpu分配时间片，有时间片了自然就开始running状态）
@@ -36,8 +39,9 @@ public class ThreadStatusDemo {
     /**
      * running状态到waiting状态
      * 唤醒的方式不能设置时间
-     * sleep方法必须设置时间，所以sleep方法不能让线程到waiting状态
-     * 只有wait和join两个方法
+     * wait,sleep方法都需要设置时间，所以sleep方法不能让线程到waiting状态
+     * wait()会调用wait(0)
+     * 只有join方法
      * wait可以通过notify方法或notifyAll方法唤醒
      * join是变成串行，线程执行完毕就唤醒了
      */
@@ -48,11 +52,14 @@ public class ThreadStatusDemo {
                 //wait:
                 wait();
 //              join:
+                myThread.start();
                 myThread.join();
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
         }, "waiting").start();
+
+        System.out.println("结束了");
     }
 
     /**
@@ -118,7 +125,8 @@ public class ThreadStatusDemo {
      * 使用interrupted()可以使得当前线程interrupted标识复位为false
      * 该示例方法一致不会结束
      */
-    public static void interrupted() throws InterruptedException{
+    @SneakyThrows
+    public static void interrupted() {
         Thread thread=new Thread(()->{
             while(true){
                 System.out.println("线程正在执行");
@@ -136,11 +144,10 @@ public class ThreadStatusDemo {
     }
 
 
+
     public static void main(String[] args) {
-        try {
-            interrupted();
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
+        interrupted();
+        AtomicInteger i=new AtomicInteger(1);
+        System.out.println(i.incrementAndGet());;
     }
 }

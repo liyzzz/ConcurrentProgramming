@@ -1,4 +1,4 @@
-package com.liyueze.security;
+package com.liyueze.security.val;
 
 /**
  * 该示例的目的是让线程做累加
@@ -11,8 +11,8 @@ package com.liyueze.security;
  *  然后轮到线程1，线程1只剩下赋值操作，就把8计算的值赋值给了count.
  *  两个线程应该最后得到的结果是9，可是最后的结果却变成了8
  */
-public class SecurityDemo {
-    private static int count = 0;
+public class VolatileDemo {
+    private /*volatile*/ static int count = 0;
 
     public static void inc() {
         count++;
@@ -21,7 +21,7 @@ public class SecurityDemo {
     public static void main(String[] args)
             throws InterruptedException {
         for (int i = 0; i < 1000; i++) {
-            new Thread(() -> SecurityDemo.inc()).start();
+            new Thread(() -> VolatileDemo.inc()).start();
         }
         Thread.sleep(3000);
         System.out.println(" 运行结果" + count);

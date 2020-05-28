@@ -35,9 +35,7 @@
 ```
 ### 如何查看native方法的源码
 以openJDK为例，openJDK采用hotspot虚拟机  
-http://hg.openjdk.java.net/jdk8/jdk8/jdk/file/00cd9dc3c2b5/src/share/native/java/lang/Thread.c  
-上面的网址可以找到java源码中的native方法于hotspot的映射关系  
-根据此映射关系在hotspot源码中查找 
+http://hg.openjdk.java.net/  可以查看
 ### run方法和start方法区别
 start方法是一个信号，告诉cpu我准好了，可以执行了；  
 而run方法是线程具体需要的执行的逻辑   
@@ -62,7 +60,7 @@ start方法最终回调了run方法
 用端代码不用做其他协调的情况下，这个共享对象的状态
 依然是正确的（正确性意味着这个对象的结果与我们预期
 规定的结果保持一致），那说明这个对象是线程安全的。  
-示例代码见SecurityDemo
+
 
 解决线程安全的方式通常是加锁
 #### java中锁分类
@@ -82,6 +80,75 @@ if(this.value == A){
     return false;
 }
 ```
+因为经常配合循环操作，直到完成为止，所以泛指一类操作(自旋 / 自旋锁 / 无锁 （无重量锁）)  
+
+cas在jdk有着大量的应用,unsafe类的compareAndSwapInt方法就是jdk提供的cas实现(见包com.liyueze.security.cas)  
+  
+compareAndSwapInt方法在hotspot中实现原理：  
+jdk8u: unsafe.cpp:
+
+cmpxchg = compare and exchange
+
+```c++
+UNSAFE_ENTRY(jboolean, Unsafe_CompareAndSwapInt(JNIEnv *env, jobject unsafe, jobject obj, jlong offset, jint e, jint x))
+  UnsafeWrapper("Unsafe_CompareAndSwapInt");
+  oop p = JNIHandles::resolve(obj);
+  jint* addr = (jint *) index_oop_from_field_offset_long(p, offset);
+  return (jint)(Atomic::cmpxchg(x, addr, e)) == e;
+UNSAFE_END
+```
+
+jdk8u: atomic_linux_x86.inline.hpp **93行**
+
+is_MP = Multi Processor  
+
+```c++
+inline jint     Atomic::cmpxchg    (jint     exchange_value, volatile jint*     dest, jint     compare_value) {
+  int mp = os::is_MP();
+  __asm__ volatile (LOCK_IF_MP(%4) "cmpxchgl %1,(%3)"
+                    : "=a" (exchange_value)
+                    : "r" (exchange_value), "a" (compare_value), "r" (dest), "r" (mp)
+                    : "cc", "memory");
+  return exchange_value;
+}
+```
+
+jdk8u: os.hpp is_MP()
+
+```c++
+  static inline bool is_MP() {
+    // During bootstrap if _processor_count is not yet initialized
+    // we claim to be MP as that is safest. If any platform has a
+    // stub generator that might be triggered in this phase and for
+    // which being declared MP when in fact not, is a problem - then
+    // the bootstrap routine for the stub generator needs to check
+    // the processor count directly and leave the bootstrap routine
+    // in place until called after initialization has ocurred.
+    return (_processor_count != 1) || AssumeMP;
+  }
+```
+
+jdk8u: atomic_linux_x86.inline.hpp
+
+```c++
+#define LOCK_IF_MP(mp) "cmp $0, " #mp "; je 1f; lock; 1: "
+```
+
+最终实现：
+
+cmpxchg = cas修改变量值
+
+```assembly
+lock cmpxchg 指令
+```
+
+硬件：
+
+lock指令在执行后面指令的时候锁定一个北桥信号
+
+（不采用锁总线的方式）
+
+
 CAS的问题：  
 1.循环时间长开销很大  
 2.只能针对一个共享变量   
@@ -90,8 +157,158 @@ CAS的问题：
 Synchronized的使用方式参见SynchronizedDemo
 关于Synchronized基础准备知识参考博文[java 中的锁 -- 偏向锁、轻量级锁、自旋锁、重量级锁](https://blog.csdn.net/zqz_zqz/article/details/70233767)  
 注： 
-1. 该博文中将自旋锁和其他三种锁并列，这种分类有误，详情参考上面美团的锁分类。**自旋锁只是轻量级锁的实现方式**
-2. 偏向锁：只有**一个线程在执行同步块**，在它没有执行完释放锁之前，没有其它线程去执行同步块，在锁无竞争的情况下使用，一旦有了竞争就升级为轻量级锁(基本不常见，所以经常配置jvm参数禁用偏向锁) 
-3. 轻量级锁：由偏向所升级来的，偏向锁运行在一个线程进入同步块的情况下，当第二个线程加入锁争用的时候，偏向锁就会升级为轻量级锁 
-4. 重量级锁：多个线程同步访问代码块
+1. 该博文中将自旋锁和其他三种锁并列，这种分类有误，详情参考上面美团的锁分类。**自旋锁只是轻量级锁的实现方式**  
+
+JDK较早的版本(重量级锁) OS的资源 互斥量 用户态 -> 内核态的转换 重量级 效率比较低
+
+现代版本进行了优化
+
+无锁 - 偏向锁 -轻量级锁（自旋锁）-重量级锁
+
+java对象头 :  
+jdk8u: markOop.hpp
+
+```java
+// Bit-format of an object header (most significant first, big endian layout below):
+//
+//  32 bits:
+//  --------
+//             hash:25 ------------>| age:4    biased_lock:1 lock:2 (normal object)
+//             JavaThread*:23 epoch:2 age:4    biased_lock:1 lock:2 (biased object)
+//             size:32 ------------------------------------------>| (CMS free block)
+//             PromotedObject*:29 ---------->| promo_bits:3 ----->| (CMS promoted object)
+//
+//  64 bits:
+//  --------
+//  unused:25 hash:31 -->| unused:1   age:4    biased_lock:1 lock:2 (normal object)
+//  JavaThread*:54 epoch:2 unused:1   age:4    biased_lock:1 lock:2 (biased object)
+//  PromotedObject*:61 --------------------->| promo_bits:3 ----->| (CMS promoted object)
+//  size:64 ----------------------------------------------------->| (CMS free block)
+//
+//  unused:25 hash:31 -->| cms_free:1 age:4    biased_lock:1 lock:2 (COOPs && normal object)
+//  JavaThread*:54 epoch:2 cms_free:1 age:4    biased_lock:1 lock:2 (COOPs && biased object)
+//  narrowOop:32 unused:24 cms_free:1 unused:4 promo_bits:3 ----->| (COOPs && CMS promoted object)
+//  unused:21 size:35 -->| cms_free:1 unused:7 ------------------>| (COOPs && CMS free block)
+```
+ ![image](https://github.com/liyzzz/ConcurrentProgramming/blob/master/image/markword-64.png)<br>
+ 
+ 示例代码见  JavaLayout
+ 
+ #### 锁升级过程
+ 无锁 - 偏向锁 - 轻量级锁 （自旋锁，自适应自旋）- 重量级锁
+ ![image](https://github.com/liyzzz/ConcurrentProgramming/blob/master/image/lock_step.png)<br>
+
+
+偏向锁 - markword 上记录当前线程指针，下次同一个线程加锁的时候，不需要争用，只需要判断线程指针是否同一个，所以，偏向锁，偏向加锁的第一个线程 。hashCode备份在线程栈上 线程销毁，锁降级为无锁
+
+有争用 - 锁升级为轻量级锁 - 每个线程有自己的LockRecord在自己的线程栈上，用CAS去争用markword的LR的指针，指针指向哪个线程的LR，哪个线程就拥有锁
+
+自旋超过10次，升级为重量级锁 - 如果太多线程自旋 CPU消耗过大，不如升级为重量级锁，进入等待队列（不消耗CPU）-XX:PreBlockSpin
+
+自旋锁在 JDK1.4.2 中引入，使用 -XX:+UseSpinning 来开启。JDK 6 中变为默认开启，并且引入了自适应的自旋锁（适应性自旋锁）。
+
+自适应自旋锁意味着自旋的时间（次数）不再固定，而是由前一次在同一个锁上的自旋时间及锁的拥有者的状态来决定。如果在同一个锁对象上，自旋等待刚刚成功获得过锁，并且持有锁的线程正在运行中，那么虚拟机就会认为这次自旋也是很有可能再次成功，进而它将允许自旋等待持续相对更长的时间。如果对于某个锁，自旋很少成功获得过，那在以后尝试获取这个锁时将可能省略掉自旋过程，直接阻塞线程，避免浪费处理器资源。
+
+偏向锁由于有锁撤销的过程revoke，会消耗系统资源，所以，在锁争用特别激烈的时候，用偏向锁未必效率高。还不如直接使用轻量级锁。
+
+#### 锁消除 lock eliminate
+
+```java
+public void add(String str1,String str2){
+         StringBuffer sb = new StringBuffer();
+         sb.append(str1).append(str2);
+}
+```
+
+我们都知道 StringBuffer 是线程安全的，因为它的关键方法都是被 synchronized 修饰过的，但我们看上面这段代码，我们会发现，sb 这个引用只会在 add 方法中使用，不可能被其它线程引用（因为是局部变量，栈私有），因此 sb 是不可能共享的资源，JVM 会自动消除 StringBuffer 对象内部的锁。
+
+### 锁粗化 lock coarsening
+
+```java
+public String test(String str){
+       
+       int i = 0;
+       StringBuffer sb = new StringBuffer():
+       while(i < 100){
+           sb.append(str);
+           i++;
+       }
+       return sb.toString():
+}
+```
+
+JVM 会检测到这样一连串的操作都对同一个对象加锁（while 循环内 100 次执行 append，没有锁粗化的就要进行 100  次加锁/解锁），此时 JVM 就会将加锁的范围粗化到这一连串的操作的外部（比如 while 虚幻体外），使得这一连串操作只需要加一次锁即可。
+
+### 锁降级
+
+https://www.zhihu.com/question/63859501  
+降级对象就是那些仅仅能被VMThread(对象监视器——Object Monitor)访问而没有其他JavaThread访问的Monitor对象。
+其实，只被VMThread访问，降级也就没啥意义了。所以可以简单认为锁降级不存在！
+
+
+## volatile
+#### 1.线程可见性
+见 VolatileDemo
+
+原理：  
+补充计算机组成原理知识 见
+![image](https://github.com/liyzzz/ConcurrentProgramming/blob/master/image/one-cpu.png)<br>
+![image](https://github.com/liyzzz/ConcurrentProgramming/blob/master/image/more-cpu.png)<br>
+
+cpu读主内存数据是以一个缓存行为单位（大小为64byte),如果一个缓存行发生变回就会通知其他线程回主内存重新读取
+
+如果数据大于一个缓存行就加总线锁（lock）
+
+缓存行示例见CacheLine(伪共享)和CacheLinePadding
+结果说明:缓存行对齐时，线程持有数组的一个对象不用通知其他cpu所以速度快,而缓存行没有对齐时，需要通知其他cpu所以慢
+
+详细见博客
+https://www.jianshu.com/p/7f89650367b8
+
+很多博客内容将MESI和volatile搞在一起,但是其实他们中间差了很多的抽象  
+见知乎:https://www.zhihu.com/question/296949412
+
+#### 2.指令重排序
+乱序执行:https://blog.csdn.net/dd864140130/article/details/56494925  
+证明乱序执行:Disorder
+乱序执行会产生的问题:  
+DoubleCheck单例需要用volatile修饰嘛?  需要  
+原因是 new 字节码：
+```
+       //在堆中创建对象并赋初始值
+       17 new #3 <com/liyueze/security/val/LazySimpleSingleton>  
+       20 dup
+       //调用构造方法
+       21 invokespecial #4 <com/liyueze/security/val/LazySimpleSingleton.<init>>
+       24 putstatic #2 <com/liyueze/security/val/LazySimpleSingleton.lazySimpleSingleton>
+       //指向创建的对象
+       27 aload_0
+```
+21和27有可能会调换顺序(指令重排序) 从而导致成员变量都是初始值，而不是构造方法中的初始值
+#### volatile实现
+当用volatile修饰的时字节码会加一个修饰符 ACC_VOLATILE  
+hostspot的实现:
+```c++
+int field_offset = cache->f2_as_index();
+          if (cache->is_volatile()) {
+            if (support_IRIW_for_not_multiple_copy_atomic_cpu) {
+              OrderAccess::fence();
+            }
+```
+
+orderaccess_linux_x86.inline.hpp
+
+```c++
+inline void OrderAccess::fence() {
+  if (os::is_MP()) {
+    // always use locked addl since mfence is sometimes expensive
+#ifdef AMD64
+    __asm__ volatile ("lock; addl $0,0(%%rsp)" : : : "cc", "memory");
+#else
+    __asm__ volatile ("lock; addl $0,0(%%esp)" : : : "cc", "memory");
+#endif
+  }
+}
+```
+
 

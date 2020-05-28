@@ -1,4 +1,4 @@
-package com.liyueze.security;
+package com.liyueze.security.syn;
 
 /**
  * Synchronized的使用方式可以分为两大类。每个大类分为两个小类
@@ -11,6 +11,7 @@ package com.liyueze.security;
  *  注：作用范围时候指什么时候加锁，作用的对象是指锁住的范围
  *  注：作用范围越小性能越好，锁住范围约少性能越好
  *  注：类在方法区，所有对象公用一份，对象在堆中，一个对象一块区域
+ *  注: 加锁锁的不是代码,而是对象（锁信息在对象头里）！！
  */
 public class SynchronizedDemo {
     //在静态方法上加锁
